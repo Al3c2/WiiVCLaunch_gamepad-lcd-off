@@ -62,6 +62,9 @@ void multipleValueItemCallback(ConfigItemMultipleValues *item, uint32_t newValue
     } else if (std::string_view(DRC_LCD_OFF_MODE_CONFIG_ID) == item->identifier) {
         gDrcLcdOffMode = newValue;
         WUPSStorageAPI::Store(item->identifier, gDrcLcdOffMode);
+    } else if (std::string_view(DRC_PICTURE_MODE_CONFIG_ID) == item->identifier) {
+        gDrcPictureMode = newValue;
+        WUPSStorageAPI::Store(item->identifier, gDrcPictureMode);
     }
 }
 
@@ -207,6 +210,18 @@ WUPSConfigAPICallbackStatus ConfigMenuOpenedCallback(WUPSConfigCategoryHandle ro
                                                                          drcLcdOffValues,
                                                                          &multipleValueItemCallback));
 
+        constexpr WUPSConfigItemMultipleValues::ValuePair drcPictureValues[] = {
+                {DRC_PICTURE_MIRROR,         "Mirror TV (default)"},
+                {DRC_PICTURE_TV_ONLY_BEFORE, "TV only (variant A)"},
+                {DRC_PICTURE_TV_ONLY_AFTER,  "TV only (variant B)"}};
+
+        lcdOffSettings.add(WUPSConfigItemMultipleValues::CreateFromValue(DRC_PICTURE_MODE_CONFIG_ID,
+                                                                         "GamePad picture when controller",
+                                                                         DEFAULT_DRC_PICTURE_MODE_VALUE,
+                                                                         gDrcPictureMode,
+                                                                         drcPictureValues,
+                                                                         &multipleValueItemCallback));
+
         root.add(std::move(lcdOffSettings));
 
         // Category: Other settings
@@ -340,6 +355,12 @@ void initConfig()
     WUPSStorageAPI::GetOrStoreDefault<int32_t>(DRC_LCD_OFF_MODE_CONFIG_ID, gDrcLcdOffMode, DEFAULT_DRC_LCD_OFF_MODE_VALUE);
     if (gDrcLcdOffMode < DRC_LCD_OFF_DISABLED || gDrcLcdOffMode >= DRC_LCD_OFF_COUNT) {
         gDrcLcdOffMode = DEFAULT_DRC_LCD_OFF_MODE_VALUE;
+    }
+
+    // Load and validate gDrcPictureMode
+    WUPSStorageAPI::GetOrStoreDefault<int32_t>(DRC_PICTURE_MODE_CONFIG_ID, gDrcPictureMode, DEFAULT_DRC_PICTURE_MODE_VALUE);
+    if (gDrcPictureMode < DRC_PICTURE_MIRROR || gDrcPictureMode >= DRC_PICTURE_COUNT) {
+        gDrcPictureMode = DEFAULT_DRC_PICTURE_MODE_VALUE;
     }
 
     // Load and validate gNotificationTheme

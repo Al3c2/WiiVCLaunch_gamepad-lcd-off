@@ -42,6 +42,14 @@ enum DrcLcdOffMode {
     DRC_LCD_OFF_COUNT,
 };
 
+// GamePad picture when it is used as controller (TV-only fork)
+enum DrcPictureMode {
+    DRC_PICTURE_MIRROR,          // stock: GamePad mirrors the TV
+    DRC_PICTURE_TV_ONLY_BEFORE,  // screen type TV only, set before enabling GamePad control
+    DRC_PICTURE_TV_ONLY_AFTER,   // screen type TV only, set after enabling GamePad control
+    DRC_PICTURE_COUNT,
+};
+
 enum NotificationTheme {
     NOTIFICATION_THEME_OFF,
     NOTIFICATION_THEME_DARK,
@@ -67,6 +75,7 @@ extern int32_t gForwarderDisplayOverride;
 // GamePad screen off
 extern int32_t gDrcLcdOffMode;
 extern bool gDrcUsedAsController;
+extern int32_t gDrcPictureMode;
 
 // Other
 extern int32_t gNotificationTheme;

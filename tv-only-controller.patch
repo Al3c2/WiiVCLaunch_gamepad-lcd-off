@@ -1,0 +1,149 @@
+From 83d5ac6d70fc2634ecddacb8ea48a6b3282f5bc6 Mon Sep 17 00:00:00 2001
+From: Alexandre Baptista <alexandre.horta.baptista@gmail.com>
+Date: Thu, 29 Oct 2026 22:25:34 +0000
+Subject: [PATCH] Add TV-only picture option while using GamePad as controller
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_018Xs1Mg1geGoeHednkj7A4Y
+---
+ src/config.cpp  | 21 +++++++++++++++++++++
+ src/config.h    |  2 ++
+ src/globals.cpp |  1 +
+ src/globals.hpp |  9 +++++++++
+ src/main.cpp    | 15 +++++++++++++++
+ 5 files changed, 48 insertions(+)
+
+diff --git a/src/config.cpp b/src/config.cpp
+index 2773f0b..60bf9f8 100755
+--- a/src/config.cpp
++++ b/src/config.cpp
+@@ -62,6 +62,9 @@ void multipleValueItemCallback(ConfigItemMultipleValues *item, uint32_t newValue
+     } else if (std::string_view(DRC_LCD_OFF_MODE_CONFIG_ID) == item->identifier) {
+         gDrcLcdOffMode = newValue;
+         WUPSStorageAPI::Store(item->identifier, gDrcLcdOffMode);
++    } else if (std::string_view(DRC_PICTURE_MODE_CONFIG_ID) == item->identifier) {
++        gDrcPictureMode = newValue;
++        WUPSStorageAPI::Store(item->identifier, gDrcPictureMode);
+     }
+ }
+ 
+@@ -207,6 +210,18 @@ WUPSConfigAPICallbackStatus ConfigMenuOpenedCallback(WUPSConfigCategoryHandle ro
+                                                                          drcLcdOffValues,
+                                                                          &multipleValueItemCallback));
+ 
++        constexpr WUPSConfigItemMultipleValues::ValuePair drcPictureValues[] = {
++                {DRC_PICTURE_MIRROR,         "Mirror TV (default)"},
++                {DRC_PICTURE_TV_ONLY_BEFORE, "TV only (variant A)"},
++                {DRC_PICTURE_TV_ONLY_AFTER,  "TV only (variant B)"}};
++
++        lcdOffSettings.add(WUPSConfigItemMultipleValues::CreateFromValue(DRC_PICTURE_MODE_CONFIG_ID,
++                                                                         "GamePad picture when controller",
++                                                                         DEFAULT_DRC_PICTURE_MODE_VALUE,
++                                                                         gDrcPictureMode,
++                                                                         drcPictureValues,
++                                                                         &multipleValueItemCallback));
++
+         root.add(std::move(lcdOffSettings));
+ 
+         // Category: Other settings
+@@ -342,6 +357,12 @@ void initConfig()
+         gDrcLcdOffMode = DEFAULT_DRC_LCD_OFF_MODE_VALUE;
+     }
+ 
++    // Load and validate gDrcPictureMode
++    WUPSStorageAPI::GetOrStoreDefault<int32_t>(DRC_PICTURE_MODE_CONFIG_ID, gDrcPictureMode, DEFAULT_DRC_PICTURE_MODE_VALUE);
++    if (gDrcPictureMode < DRC_PICTURE_MIRROR || gDrcPictureMode >= DRC_PICTURE_COUNT) {
++        gDrcPictureMode = DEFAULT_DRC_PICTURE_MODE_VALUE;
++    }
++
+     // Load and validate gNotificationTheme
+     WUPSStorageAPI::GetOrStoreDefault<int32_t>(NOTIFICATION_THEME_CONFIG_ID, gNotificationTheme, DEFAULT_NOTIFICATION_THEME_VALUE);
+     if (gNotificationTheme < NOTIFICATION_THEME_OFF || gNotificationTheme >= NOTIFICATION_THEME_COUNT) {
+diff --git a/src/config.h b/src/config.h
+index 86845c4..6507e59 100755
+--- a/src/config.h
++++ b/src/config.h
+@@ -15,6 +15,7 @@
+ 
+ // GamePad screen off
+ #define DEFAULT_DRC_LCD_OFF_MODE_VALUE          DRC_LCD_OFF_DISABLED
++#define DEFAULT_DRC_PICTURE_MODE_VALUE          DRC_PICTURE_MIRROR
+ 
+ // Other
+ #define DEFAULT_NOTIFICATION_THEME_VALUE        NOTIFICATION_THEME_LIGHT
+@@ -36,6 +37,7 @@
+ 
+ // GamePad screen off
+ #define DRC_LCD_OFF_MODE_CONFIG_ID              "drcLcdOffMode"
++#define DRC_PICTURE_MODE_CONFIG_ID              "drcPictureMode"
+ 
+ // Other
+ #define NOTIFICATION_THEME_CONFIG_ID            "notificationTheme"
+diff --git a/src/globals.cpp b/src/globals.cpp
+index 5bdabb1..f31bc10 100755
+--- a/src/globals.cpp
++++ b/src/globals.cpp
+@@ -17,6 +17,7 @@ int32_t gForwarderDisplayOverride = DEFAULT_FORWARDER_DISPLAY_OVERRIDE;
+ // GamePad screen off
+ int32_t gDrcLcdOffMode = DEFAULT_DRC_LCD_OFF_MODE_VALUE;
+ bool gDrcUsedAsController = false;
++int32_t gDrcPictureMode = DEFAULT_DRC_PICTURE_MODE_VALUE;
+ 
+ // Other
+ int32_t gNotificationTheme = DEFAULT_NOTIFICATION_THEME_VALUE;
+diff --git a/src/globals.hpp b/src/globals.hpp
+index 478b91f..59b427d 100755
+--- a/src/globals.hpp
++++ b/src/globals.hpp
+@@ -42,6 +42,14 @@ enum DrcLcdOffMode {
+     DRC_LCD_OFF_COUNT,
+ };
+ 
++// GamePad picture when it is used as controller (TV-only fork)
++enum DrcPictureMode {
++    DRC_PICTURE_MIRROR,          // stock: GamePad mirrors the TV
++    DRC_PICTURE_TV_ONLY_BEFORE,  // screen type TV only, set before enabling GamePad control
++    DRC_PICTURE_TV_ONLY_AFTER,   // screen type TV only, set after enabling GamePad control
++    DRC_PICTURE_COUNT,
++};
++
+ enum NotificationTheme {
+     NOTIFICATION_THEME_OFF,
+     NOTIFICATION_THEME_DARK,
+@@ -67,6 +75,7 @@ extern int32_t gForwarderDisplayOverride;
+ // GamePad screen off
+ extern int32_t gDrcLcdOffMode;
+ extern bool gDrcUsedAsController;
++extern int32_t gDrcPictureMode;
+ 
+ // Other
+ extern int32_t gNotificationTheme;
+diff --git a/src/main.cpp b/src/main.cpp
+index a7a30f8..a63c24e 100755
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -575,6 +575,21 @@ DECL_FUNCTION(int32_t, CMPTAcctSetDrcCtrlEnabled, int32_t enable)
+         }
+         sInputRedirectionActive = true;
+     }
++
++    // TV-only fork: keep the GamePad as controller but don't send it the TV picture.
++    // Nintendo's menu never offers this combination; two orders are tried because CMPT may reset one setting when the other is set.
++    if (enable != 0 && gDrcPictureMode == DRC_PICTURE_TV_ONLY_BEFORE) {
++        int32_t res1 = CMPTAcctSetScreenType(CMPT_SCREEN_TYPE_TV);
++        int32_t res2 = real_CMPTAcctSetDrcCtrlEnabled(enable);
++        DEBUG_FUNCTION_LINE("TV-only A: SetScreenType(TV)=%d, SetDrcCtrlEnabled(1)=%d", res1, res2);
++        return res2;
++    }
++    if (enable != 0 && gDrcPictureMode == DRC_PICTURE_TV_ONLY_AFTER) {
++        int32_t res2 = real_CMPTAcctSetDrcCtrlEnabled(enable);
++        int32_t res1 = CMPTAcctSetScreenType(CMPT_SCREEN_TYPE_TV);
++        DEBUG_FUNCTION_LINE("TV-only B: SetDrcCtrlEnabled(1)=%d, SetScreenType(TV)=%d", res2, res1);
++        return res2;
++    }
+     return real_CMPTAcctSetDrcCtrlEnabled(enable);
+ }
+ 
+-- 
+2.43.0
+

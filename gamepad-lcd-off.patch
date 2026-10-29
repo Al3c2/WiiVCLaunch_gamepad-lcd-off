@@ -1,0 +1,221 @@
+From c31c039b6a90e74d9dacd3bf25a9070922b96a55 Mon Sep 17 00:00:00 2001
+From: Alexandre Baptista <alexandre.horta.baptista@gmail.com>
+Date: Thu, 29 Oct 2026 21:06:11 +0000
+Subject: [PATCH] Add option to turn GamePad screen off when used as controller
+ in Wii VC
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_018Xs1Mg1geGoeHednkj7A4Y
+---
+ .github/workflows/build.yml |  4 ++++
+ src/config.cpp              | 28 ++++++++++++++++++++++++++++
+ src/config.h                |  6 ++++++
+ src/globals.cpp             |  4 ++++
+ src/globals.hpp             | 14 ++++++++++++++
+ src/main.cpp                | 25 +++++++++++++++++++++++++
+ 6 files changed, 81 insertions(+)
+
+diff --git a/.github/workflows/build.yml b/.github/workflows/build.yml
+index ea5ecf1..931fd22 100644
+--- a/.github/workflows/build.yml
++++ b/.github/workflows/build.yml
+@@ -1,6 +1,10 @@
+ name: Build
+ 
+ on:
++  workflow_dispatch:
++  push:
++    branches:
++      - 'gamepad-lcd-off'
+   pull_request:
+     branches:
+       - 'main'
+diff --git a/src/config.cpp b/src/config.cpp
+index db34346..2773f0b 100755
+--- a/src/config.cpp
++++ b/src/config.cpp
+@@ -59,6 +59,9 @@ void multipleValueItemCallback(ConfigItemMultipleValues *item, uint32_t newValue
+     } else if (std::string_view(FORWARDER_DISPLAY_OVERRIDE_CONFIG_ID) == item->identifier) {
+         gForwarderDisplayOverride = newValue;
+         WUPSStorageAPI::Store(item->identifier, gForwarderDisplayOverride);
++    } else if (std::string_view(DRC_LCD_OFF_MODE_CONFIG_ID) == item->identifier) {
++        gDrcLcdOffMode = newValue;
++        WUPSStorageAPI::Store(item->identifier, gDrcLcdOffMode);
+     }
+ }
+ 
+@@ -187,6 +190,25 @@ WUPSConfigAPICallbackStatus ConfigMenuOpenedCallback(WUPSConfigCategoryHandle ro
+ 
+         root.add(std::move(forwarderSettings));
+ 
++        // Category: GamePad screen off (LCD-off fork, strings intentionally not translated)
++        auto lcdOffSettings = WUPSConfigCategory::Create("GamePad screen off");
++
++        constexpr WUPSConfigItemMultipleValues::ValuePair drcLcdOffValues[] = {
++                {DRC_LCD_OFF_DISABLED,      "Disabled (screen stays on)"},
++                {DRC_LCD_OFF_AT_LAUNCH,     "Off at launch"},
++                {DRC_LCD_OFF_AT_LAUNCH_100, "Off at launch + 100 ms wait"},
++                {DRC_LCD_OFF_AT_LAUNCH_500, "Off at launch + 500 ms wait"},
++                {DRC_LCD_OFF_AT_PREPARE,    "Off early (prepare launch)"}};
++
++        lcdOffSettings.add(WUPSConfigItemMultipleValues::CreateFromValue(DRC_LCD_OFF_MODE_CONFIG_ID,
++                                                                         "Screen when GamePad is controller",
++                                                                         DEFAULT_DRC_LCD_OFF_MODE_VALUE,
++                                                                         gDrcLcdOffMode,
++                                                                         drcLcdOffValues,
++                                                                         &multipleValueItemCallback));
++
++        root.add(std::move(lcdOffSettings));
++
+         // Category: Other settings
+         auto otherSettings = WUPSConfigCategory::Create(strings.other_settings);
+ 
+@@ -314,6 +336,12 @@ void initConfig()
+         gForwarderDisplayOverride = DEFAULT_FORWARDER_DISPLAY_OVERRIDE;
+     }
+ 
++    // Load and validate gDrcLcdOffMode
++    WUPSStorageAPI::GetOrStoreDefault<int32_t>(DRC_LCD_OFF_MODE_CONFIG_ID, gDrcLcdOffMode, DEFAULT_DRC_LCD_OFF_MODE_VALUE);
++    if (gDrcLcdOffMode < DRC_LCD_OFF_DISABLED || gDrcLcdOffMode >= DRC_LCD_OFF_COUNT) {
++        gDrcLcdOffMode = DEFAULT_DRC_LCD_OFF_MODE_VALUE;
++    }
++
+     // Load and validate gNotificationTheme
+     WUPSStorageAPI::GetOrStoreDefault<int32_t>(NOTIFICATION_THEME_CONFIG_ID, gNotificationTheme, DEFAULT_NOTIFICATION_THEME_VALUE);
+     if (gNotificationTheme < NOTIFICATION_THEME_OFF || gNotificationTheme >= NOTIFICATION_THEME_COUNT) {
+diff --git a/src/config.h b/src/config.h
+index a3d4b5f..86845c4 100755
+--- a/src/config.h
++++ b/src/config.h
+@@ -13,6 +13,9 @@
+ // WUHB Forwarder
+ #define DEFAULT_FORWARDER_DISPLAY_OVERRIDE      DISPLAY_OPTION_CHOOSE
+ 
++// GamePad screen off
++#define DEFAULT_DRC_LCD_OFF_MODE_VALUE          DRC_LCD_OFF_DISABLED
++
+ // Other
+ #define DEFAULT_NOTIFICATION_THEME_VALUE        NOTIFICATION_THEME_LIGHT
+ #define DEFAULT_PRESERVE_SYSCONF_VALUE          true
+@@ -31,6 +34,9 @@
+ // WUHB Forwarder
+ #define FORWARDER_DISPLAY_OVERRIDE_CONFIG_ID    "forwarderDisplayOverride"
+ 
++// GamePad screen off
++#define DRC_LCD_OFF_MODE_CONFIG_ID              "drcLcdOffMode"
++
+ // Other
+ #define NOTIFICATION_THEME_CONFIG_ID            "notificationTheme"
+ #define PRESERVE_SYSCONF_CONFIG_ID              "preserveSysconf"
+diff --git a/src/globals.cpp b/src/globals.cpp
+index 5618873..5bdabb1 100755
+--- a/src/globals.cpp
++++ b/src/globals.cpp
+@@ -14,6 +14,10 @@ int32_t gWiiMenuSetResolution = DEFAULT_WII_MENU_SET_RESOLUTION_VALUE;
+ // WUHB Forwarder
+ int32_t gForwarderDisplayOverride = DEFAULT_FORWARDER_DISPLAY_OVERRIDE;
+ 
++// GamePad screen off
++int32_t gDrcLcdOffMode = DEFAULT_DRC_LCD_OFF_MODE_VALUE;
++bool gDrcUsedAsController = false;
++
+ // Other
+ int32_t gNotificationTheme = DEFAULT_NOTIFICATION_THEME_VALUE;
+ bool gPreserveSysconf = DEFAULT_PRESERVE_SYSCONF_VALUE;
+diff --git a/src/globals.hpp b/src/globals.hpp
+index 2d5a137..478b91f 100755
+--- a/src/globals.hpp
++++ b/src/globals.hpp
+@@ -32,6 +32,16 @@ enum SetResolution {
+     SET_RESOLUTION_480P_43 = 103,
+ };
+ 
++// GamePad screen off (LCD-off fork)
++enum DrcLcdOffMode {
++    DRC_LCD_OFF_DISABLED,       // stock behaviour, screen stays on
++    DRC_LCD_OFF_AT_LAUNCH,      // VPADSetLcdMode(OFF) right before MCP_LaunchCompat
++    DRC_LCD_OFF_AT_LAUNCH_100,  // same, then wait 100 ms
++    DRC_LCD_OFF_AT_LAUNCH_500,  // same, then wait 500 ms
++    DRC_LCD_OFF_AT_PREPARE,     // earlier: in CMPTExPrepareLaunch
++    DRC_LCD_OFF_COUNT,
++};
++
+ enum NotificationTheme {
+     NOTIFICATION_THEME_OFF,
+     NOTIFICATION_THEME_DARK,
+@@ -54,6 +64,10 @@ extern int32_t gWiiMenuSetResolution;
+ // WUHB Forwarder
+ extern int32_t gForwarderDisplayOverride;
+ 
++// GamePad screen off
++extern int32_t gDrcLcdOffMode;
++extern bool gDrcUsedAsController;
++
+ // Other
+ extern int32_t gNotificationTheme;
+ extern bool gPreserveSysconf;
+diff --git a/src/main.cpp b/src/main.cpp
+index 702dfa1..a7a30f8 100755
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -18,6 +18,7 @@
+ #include <nn/cmpt/cmpt.h>
+ #include <nn/erreula.h>
+ #include <proc_ui/procui.h>
++#include <vpad/input.h>
+ 
+ #include <wups.h>
+ 
+@@ -50,6 +51,26 @@ static bool sLaunchingWiiGame = false;
+ static bool sInputRedirectionActive = false;
+ static bool sUserCancelledCustomDialogs = false;
+ 
++// LCD-off fork: turn the GamePad screen off while keeping it as the controller.
++// Must run on the Cafe side; once MCP_LaunchCompat hands over to vWii the plugin is gone.
++static void turnDrcLcdOffIfWanted(bool earlyHook)
++{
++    if (!gDrcUsedAsController || gDrcLcdOffMode == DRC_LCD_OFF_DISABLED) {
++        DEBUG_FUNCTION_LINE("LCD-off: skipped (controller=%d, mode=%d)", gDrcUsedAsController, gDrcLcdOffMode);
++        return;
++    }
++    if (earlyHook != (gDrcLcdOffMode == DRC_LCD_OFF_AT_PREPARE))
++        return;
++
++    int32_t res = VPADSetLcdMode(VPAD_CHAN_0, VPAD_LCD_OFF);
++    DEBUG_FUNCTION_LINE("LCD-off: VPADSetLcdMode(OFF) = %d (mode %d)", res, gDrcLcdOffMode);
++
++    if (gDrcLcdOffMode == DRC_LCD_OFF_AT_LAUNCH_100)
++        OSSleepTicks(OSMillisecondsToTicks(100));
++    else if (gDrcLcdOffMode == DRC_LCD_OFF_AT_LAUNCH_500)
++        OSSleepTicks(OSMillisecondsToTicks(500));
++}
++
+ // Gets called ONCE when the plugin was loaded
+ INITIALIZE_PLUGIN()
+ {
+@@ -510,6 +531,7 @@ DECL_FUNCTION(int32_t, CMPTExPrepareLaunch, uint32_t unk1, void *unk2, uint32_t
+     setResolution(gSetResolution);
+     if (gPermanentNetConfig)
+         patchNetConfigOverwrite();
++    turnDrcLcdOffIfWanted(true);
+ 
+     int32_t result = real_CMPTExPrepareLaunch(unk1, unk2, unk3);
+     
+@@ -536,11 +558,14 @@ DECL_FUNCTION(int32_t, MCP_LaunchCompat, int32_t handle, void *confBuffer, uint3
+ {
+     if (gPermanentNetConfig)
+         patchNetConfigOverwrite();
++    turnDrcLcdOffIfWanted(false);
+     return real_MCP_LaunchCompat(handle, confBuffer, confBufferSize, imgsBuffer, imgsBufferSize);
+ }
+ 
+ DECL_FUNCTION(int32_t, CMPTAcctSetDrcCtrlEnabled, int32_t enable)
+ {
++    // remember the choice; the launch itself happens later in another process
++    gDrcUsedAsController = (enable != 0);
+     if (enable == 0 && !sLaunchingWiiGame) {
+         int8_t sensorBarEnabled = 0;
+         VPADBASEGetSensorBarSetting(VPAD_CHAN_0, &sensorBarEnabled);
+-- 
+2.43.0
+

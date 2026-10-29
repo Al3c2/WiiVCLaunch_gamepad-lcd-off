@@ -575,6 +575,21 @@ DECL_FUNCTION(int32_t, CMPTAcctSetDrcCtrlEnabled, int32_t enable)
         }
         sInputRedirectionActive = true;
     }
+
+    // TV-only fork: keep the GamePad as controller but don't send it the TV picture.
+    // Nintendo's menu never offers this combination; two orders are tried because CMPT may reset one setting when the other is set.
+    if (enable != 0 && gDrcPictureMode == DRC_PICTURE_TV_ONLY_BEFORE) {
+        int32_t res1 = CMPTAcctSetScreenType(CMPT_SCREEN_TYPE_TV);
+        int32_t res2 = real_CMPTAcctSetDrcCtrlEnabled(enable);
+        DEBUG_FUNCTION_LINE("TV-only A: SetScreenType(TV)=%d, SetDrcCtrlEnabled(1)=%d", res1, res2);
+        return res2;
+    }
+    if (enable != 0 && gDrcPictureMode == DRC_PICTURE_TV_ONLY_AFTER) {
+        int32_t res2 = real_CMPTAcctSetDrcCtrlEnabled(enable);
+        int32_t res1 = CMPTAcctSetScreenType(CMPT_SCREEN_TYPE_TV);
+        DEBUG_FUNCTION_LINE("TV-only B: SetDrcCtrlEnabled(1)=%d, SetScreenType(TV)=%d", res2, res1);
+        return res2;
+    }
     return real_CMPTAcctSetDrcCtrlEnabled(enable);
 }
 
