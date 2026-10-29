@@ -59,6 +59,9 @@ void multipleValueItemCallback(ConfigItemMultipleValues *item, uint32_t newValue
     } else if (std::string_view(FORWARDER_DISPLAY_OVERRIDE_CONFIG_ID) == item->identifier) {
         gForwarderDisplayOverride = newValue;
         WUPSStorageAPI::Store(item->identifier, gForwarderDisplayOverride);
+    } else if (std::string_view(DRC_LCD_OFF_MODE_CONFIG_ID) == item->identifier) {
+        gDrcLcdOffMode = newValue;
+        WUPSStorageAPI::Store(item->identifier, gDrcLcdOffMode);
     }
 }
 
@@ -187,6 +190,25 @@ WUPSConfigAPICallbackStatus ConfigMenuOpenedCallback(WUPSConfigCategoryHandle ro
 
         root.add(std::move(forwarderSettings));
 
+        // Category: GamePad screen off (LCD-off fork, strings intentionally not translated)
+        auto lcdOffSettings = WUPSConfigCategory::Create("GamePad screen off");
+
+        constexpr WUPSConfigItemMultipleValues::ValuePair drcLcdOffValues[] = {
+                {DRC_LCD_OFF_DISABLED,      "Disabled (screen stays on)"},
+                {DRC_LCD_OFF_AT_LAUNCH,     "Off at launch"},
+                {DRC_LCD_OFF_AT_LAUNCH_100, "Off at launch + 100 ms wait"},
+                {DRC_LCD_OFF_AT_LAUNCH_500, "Off at launch + 500 ms wait"},
+                {DRC_LCD_OFF_AT_PREPARE,    "Off early (prepare launch)"}};
+
+        lcdOffSettings.add(WUPSConfigItemMultipleValues::CreateFromValue(DRC_LCD_OFF_MODE_CONFIG_ID,
+                                                                         "Screen when GamePad is controller",
+                                                                         DEFAULT_DRC_LCD_OFF_MODE_VALUE,
+                                                                         gDrcLcdOffMode,
+                                                                         drcLcdOffValues,
+                                                                         &multipleValueItemCallback));
+
+        root.add(std::move(lcdOffSettings));
+
         // Category: Other settings
         auto otherSettings = WUPSConfigCategory::Create(strings.other_settings);
 
@@ -312,6 +334,12 @@ void initConfig()
     WUPSStorageAPI::GetOrStoreDefault<int32_t>(FORWARDER_DISPLAY_OVERRIDE_CONFIG_ID, gForwarderDisplayOverride, DEFAULT_FORWARDER_DISPLAY_OVERRIDE);
     if (gForwarderDisplayOverride < DISPLAY_OPTION_TV || gForwarderDisplayOverride >= DISPLAY_OPTION_COUNT) {
         gForwarderDisplayOverride = DEFAULT_FORWARDER_DISPLAY_OVERRIDE;
+    }
+
+    // Load and validate gDrcLcdOffMode
+    WUPSStorageAPI::GetOrStoreDefault<int32_t>(DRC_LCD_OFF_MODE_CONFIG_ID, gDrcLcdOffMode, DEFAULT_DRC_LCD_OFF_MODE_VALUE);
+    if (gDrcLcdOffMode < DRC_LCD_OFF_DISABLED || gDrcLcdOffMode >= DRC_LCD_OFF_COUNT) {
+        gDrcLcdOffMode = DEFAULT_DRC_LCD_OFF_MODE_VALUE;
     }
 
     // Load and validate gNotificationTheme

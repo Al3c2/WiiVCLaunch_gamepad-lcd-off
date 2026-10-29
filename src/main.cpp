@@ -18,6 +18,7 @@
 #include <nn/cmpt/cmpt.h>
 #include <nn/erreula.h>
 #include <proc_ui/procui.h>
+#include <vpad/input.h>
 
 #include <wups.h>
 
@@ -49,6 +50,26 @@ static bool (*dyn_ErrEulaIsDecideSelectRightButtonError)()                      
 static bool sLaunchingWiiGame = false;
 static bool sInputRedirectionActive = false;
 static bool sUserCancelledCustomDialogs = false;
+
+// LCD-off fork: turn the GamePad screen off while keeping it as the controller.
+// Must run on the Cafe side; once MCP_LaunchCompat hands over to vWii the plugin is gone.
+static void turnDrcLcdOffIfWanted(bool earlyHook)
+{
+    if (!gDrcUsedAsController || gDrcLcdOffMode == DRC_LCD_OFF_DISABLED) {
+        DEBUG_FUNCTION_LINE("LCD-off: skipped (controller=%d, mode=%d)", gDrcUsedAsController, gDrcLcdOffMode);
+        return;
+    }
+    if (earlyHook != (gDrcLcdOffMode == DRC_LCD_OFF_AT_PREPARE))
+        return;
+
+    int32_t res = VPADSetLcdMode(VPAD_CHAN_0, VPAD_LCD_OFF);
+    DEBUG_FUNCTION_LINE("LCD-off: VPADSetLcdMode(OFF) = %d (mode %d)", res, gDrcLcdOffMode);
+
+    if (gDrcLcdOffMode == DRC_LCD_OFF_AT_LAUNCH_100)
+        OSSleepTicks(OSMillisecondsToTicks(100));
+    else if (gDrcLcdOffMode == DRC_LCD_OFF_AT_LAUNCH_500)
+        OSSleepTicks(OSMillisecondsToTicks(500));
+}
 
 // Gets called ONCE when the plugin was loaded
 INITIALIZE_PLUGIN()
@@ -510,6 +531,7 @@ DECL_FUNCTION(int32_t, CMPTExPrepareLaunch, uint32_t unk1, void *unk2, uint32_t 
     setResolution(gSetResolution);
     if (gPermanentNetConfig)
         patchNetConfigOverwrite();
+    turnDrcLcdOffIfWanted(true);
 
     int32_t result = real_CMPTExPrepareLaunch(unk1, unk2, unk3);
     
@@ -536,11 +558,14 @@ DECL_FUNCTION(int32_t, MCP_LaunchCompat, int32_t handle, void *confBuffer, uint3
 {
     if (gPermanentNetConfig)
         patchNetConfigOverwrite();
+    turnDrcLcdOffIfWanted(false);
     return real_MCP_LaunchCompat(handle, confBuffer, confBufferSize, imgsBuffer, imgsBufferSize);
 }
 
 DECL_FUNCTION(int32_t, CMPTAcctSetDrcCtrlEnabled, int32_t enable)
 {
+    // remember the choice; the launch itself happens later in another process
+    gDrcUsedAsController = (enable != 0);
     if (enable == 0 && !sLaunchingWiiGame) {
         int8_t sensorBarEnabled = 0;
         VPADBASEGetSensorBarSetting(VPAD_CHAN_0, &sensorBarEnabled);

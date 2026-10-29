@@ -14,6 +14,10 @@ int32_t gWiiMenuSetResolution = DEFAULT_WII_MENU_SET_RESOLUTION_VALUE;
 // WUHB Forwarder
 int32_t gForwarderDisplayOverride = DEFAULT_FORWARDER_DISPLAY_OVERRIDE;
 
+// GamePad screen off
+int32_t gDrcLcdOffMode = DEFAULT_DRC_LCD_OFF_MODE_VALUE;
+bool gDrcUsedAsController = false;
+
 // Other
 int32_t gNotificationTheme = DEFAULT_NOTIFICATION_THEME_VALUE;
 bool gPreserveSysconf = DEFAULT_PRESERVE_SYSCONF_VALUE;

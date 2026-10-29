@@ -1,6 +1,10 @@
 name: Build
 
 on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'gamepad-lcd-off'
   pull_request:
     branches:
       - 'main'

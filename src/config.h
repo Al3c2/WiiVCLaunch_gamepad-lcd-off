@@ -13,6 +13,9 @@
 // WUHB Forwarder
 #define DEFAULT_FORWARDER_DISPLAY_OVERRIDE      DISPLAY_OPTION_CHOOSE
 
+// GamePad screen off
+#define DEFAULT_DRC_LCD_OFF_MODE_VALUE          DRC_LCD_OFF_DISABLED
+
 // Other
 #define DEFAULT_NOTIFICATION_THEME_VALUE        NOTIFICATION_THEME_LIGHT
 #define DEFAULT_PRESERVE_SYSCONF_VALUE          true
@@ -30,6 +33,9 @@
 
 // WUHB Forwarder
 #define FORWARDER_DISPLAY_OVERRIDE_CONFIG_ID    "forwarderDisplayOverride"
+
+// GamePad screen off
+#define DRC_LCD_OFF_MODE_CONFIG_ID              "drcLcdOffMode"
 
 // Other
 #define NOTIFICATION_THEME_CONFIG_ID            "notificationTheme"

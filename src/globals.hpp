@@ -32,6 +32,16 @@ enum SetResolution {
     SET_RESOLUTION_480P_43 = 103,
 };
 
+// GamePad screen off (LCD-off fork)
+enum DrcLcdOffMode {
+    DRC_LCD_OFF_DISABLED,       // stock behaviour, screen stays on
+    DRC_LCD_OFF_AT_LAUNCH,      // VPADSetLcdMode(OFF) right before MCP_LaunchCompat
+    DRC_LCD_OFF_AT_LAUNCH_100,  // same, then wait 100 ms
+    DRC_LCD_OFF_AT_LAUNCH_500,  // same, then wait 500 ms
+    DRC_LCD_OFF_AT_PREPARE,     // earlier: in CMPTExPrepareLaunch
+    DRC_LCD_OFF_COUNT,
+};
+
 enum NotificationTheme {
     NOTIFICATION_THEME_OFF,
     NOTIFICATION_THEME_DARK,
@@ -53,6 +63,10 @@ extern int32_t gWiiMenuSetResolution;
 
 // WUHB Forwarder
 extern int32_t gForwarderDisplayOverride;
+
+// GamePad screen off
+extern int32_t gDrcLcdOffMode;
+extern bool gDrcUsedAsController;
 
 // Other
 extern int32_t gNotificationTheme;
