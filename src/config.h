@@ -16,6 +16,7 @@
 // GamePad screen off
 #define DEFAULT_DRC_LCD_OFF_MODE_VALUE          DRC_LCD_OFF_DISABLED
 #define DEFAULT_DRC_PICTURE_MODE_VALUE          DRC_PICTURE_MIRROR
+#define DEFAULT_DRC_BRIGHTNESS_MODE_VALUE       DRC_BRIGHTNESS_UNCHANGED
 
 // Other
 #define DEFAULT_NOTIFICATION_THEME_VALUE        NOTIFICATION_THEME_LIGHT
@@ -38,6 +39,9 @@
 // GamePad screen off
 #define DRC_LCD_OFF_MODE_CONFIG_ID              "drcLcdOffMode"
 #define DRC_PICTURE_MODE_CONFIG_ID              "drcPictureMode"
+#define DRC_BRIGHTNESS_MODE_CONFIG_ID           "drcBrightnessMode"
+#define DRC_BRIGHTNESS_SAVED_ID                 "drcBrightnessSaved"
+#define DRC_BRIGHTNESS_RESTORE_PENDING_ID       "drcBrightnessRestorePending"
 
 // Other
 #define NOTIFICATION_THEME_CONFIG_ID            "notificationTheme"

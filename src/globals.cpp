@@ -18,6 +18,7 @@ int32_t gForwarderDisplayOverride = DEFAULT_FORWARDER_DISPLAY_OVERRIDE;
 int32_t gDrcLcdOffMode = DEFAULT_DRC_LCD_OFF_MODE_VALUE;
 bool gDrcUsedAsController = false;
 int32_t gDrcPictureMode = DEFAULT_DRC_PICTURE_MODE_VALUE;
+int32_t gDrcBrightnessMode = DEFAULT_DRC_BRIGHTNESS_MODE_VALUE;
 
 // Other
 int32_t gNotificationTheme = DEFAULT_NOTIFICATION_THEME_VALUE;

@@ -50,6 +50,14 @@ enum DrcPictureMode {
     DRC_PICTURE_COUNT,
 };
 
+// GamePad brightness at launch (brightness fork)
+enum DrcBrightnessMode {
+    DRC_BRIGHTNESS_UNCHANGED,  // stock
+    DRC_BRIGHTNESS_ZERO,       // experimental: level 0 (below the official 1..5) = backlight off?
+    DRC_BRIGHTNESS_ONE,        // lowest official level
+    DRC_BRIGHTNESS_COUNT,
+};
+
 enum NotificationTheme {
     NOTIFICATION_THEME_OFF,
     NOTIFICATION_THEME_DARK,
@@ -76,6 +84,10 @@ extern int32_t gForwarderDisplayOverride;
 extern int32_t gDrcLcdOffMode;
 extern bool gDrcUsedAsController;
 extern int32_t gDrcPictureMode;
+extern int32_t gDrcBrightnessMode;
+
+// restores the GamePad brightness saved before a Wii VC launch (safe to call any time)
+void restoreDrcBrightnessIfNeeded();
 
 // Other
 extern int32_t gNotificationTheme;

@@ -19,6 +19,7 @@
 #include <nn/erreula.h>
 #include <proc_ui/procui.h>
 #include <vpad/input.h>
+#include <nn/ccr/sys.h>
 
 #include <wups.h>
 
@@ -50,6 +51,52 @@ static bool (*dyn_ErrEulaIsDecideSelectRightButtonError)()                      
 static bool sLaunchingWiiGame = false;
 static bool sInputRedirectionActive = false;
 static bool sUserCancelledCustomDialogs = false;
+
+// Brightness fork: the GamePad keeps its brightness level into Wii mode,
+// so we set it right before launch and put the user's level back afterwards.
+static void rememberDrcBrightness()
+{
+    CCRSysLCDMode current = CCR_SYS_LCD_MODE_BRIGHTNESS_3;
+    int32_t res = CCRSysGetCurrentLCDMode(&current);
+    if (res != 0 || current < CCR_SYS_LCD_MODE_BRIGHTNESS_1 || current > CCR_SYS_LCD_MODE_BRIGHTNESS_5) {
+        DEBUG_FUNCTION_LINE_ERR("Brightness: get failed (%d) or odd level %d, using 3", res, current);
+        current = CCR_SYS_LCD_MODE_BRIGHTNESS_3;
+    }
+    bool pending = false;
+    WUPSStorageAPI::Get(DRC_BRIGHTNESS_RESTORE_PENDING_ID, pending);
+    if (!pending) { // don't overwrite the real level with our own 0/1 if a restore is still due
+        WUPSStorageAPI::Store(DRC_BRIGHTNESS_SAVED_ID, (int32_t) current);
+    }
+    WUPSStorageAPI::Store(DRC_BRIGHTNESS_RESTORE_PENDING_ID, true);
+    WUPSStorageAPI::SaveStorage();
+    DEBUG_FUNCTION_LINE("Brightness: saved level %d", current);
+}
+
+static void applyDrcBrightnessIfWanted()
+{
+    if (!gDrcUsedAsController || gDrcBrightnessMode == DRC_BRIGHTNESS_UNCHANGED)
+        return;
+    int32_t level = (gDrcBrightnessMode == DRC_BRIGHTNESS_ZERO) ? 0 : 1;
+    int32_t res = CCRSysSetCurrentLCDMode((CCRSysLCDMode) level);
+    DEBUG_FUNCTION_LINE("Brightness: CCRSysSetCurrentLCDMode(%d) = %d", level, res);
+}
+
+void restoreDrcBrightnessIfNeeded()
+{
+    bool pending = false;
+    if (WUPSStorageAPI::Get(DRC_BRIGHTNESS_RESTORE_PENDING_ID, pending) != WUPS_STORAGE_ERROR_SUCCESS || !pending)
+        return;
+    int32_t saved = CCR_SYS_LCD_MODE_BRIGHTNESS_3;
+    WUPSStorageAPI::Get(DRC_BRIGHTNESS_SAVED_ID, saved);
+    if (saved < CCR_SYS_LCD_MODE_BRIGHTNESS_1 || saved > CCR_SYS_LCD_MODE_BRIGHTNESS_5)
+        saved = CCR_SYS_LCD_MODE_BRIGHTNESS_3;
+    int32_t res = CCRSysSetCurrentLCDMode((CCRSysLCDMode) saved);
+    DEBUG_FUNCTION_LINE("Brightness: restored level %d (res %d)", saved, res);
+    if (res == 0) {
+        WUPSStorageAPI::Store(DRC_BRIGHTNESS_RESTORE_PENDING_ID, false);
+        WUPSStorageAPI::SaveStorage();
+    }
+}
 
 // LCD-off fork: turn the GamePad screen off while keeping it as the controller.
 // Must run on the Cafe side; once MCP_LaunchCompat hands over to vWii the plugin is gone.
@@ -237,6 +284,8 @@ ON_APPLICATION_START()
         OSGetTitleID() == 0x0005001010040200) { // Wii U Menu EUR
         gInWiiUMenu = true;
         sLaunchingWiiGame = false;
+        gDrcUsedAsController = false;
+        restoreDrcBrightnessIfNeeded();
     } else {
         gInWiiUMenu = false;
     }
@@ -559,6 +608,7 @@ DECL_FUNCTION(int32_t, MCP_LaunchCompat, int32_t handle, void *confBuffer, uint3
     if (gPermanentNetConfig)
         patchNetConfigOverwrite();
     turnDrcLcdOffIfWanted(false);
+    applyDrcBrightnessIfWanted();
     return real_MCP_LaunchCompat(handle, confBuffer, confBufferSize, imgsBuffer, imgsBufferSize);
 }
 
@@ -566,6 +616,8 @@ DECL_FUNCTION(int32_t, CMPTAcctSetDrcCtrlEnabled, int32_t enable)
 {
     // remember the choice; the launch itself happens later in another process
     gDrcUsedAsController = (enable != 0);
+    if (enable != 0 && gDrcBrightnessMode != DRC_BRIGHTNESS_UNCHANGED)
+        rememberDrcBrightness();
     if (enable == 0 && !sLaunchingWiiGame) {
         int8_t sensorBarEnabled = 0;
         VPADBASEGetSensorBarSetting(VPAD_CHAN_0, &sensorBarEnabled);

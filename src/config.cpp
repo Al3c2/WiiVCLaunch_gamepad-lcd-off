@@ -65,6 +65,9 @@ void multipleValueItemCallback(ConfigItemMultipleValues *item, uint32_t newValue
     } else if (std::string_view(DRC_PICTURE_MODE_CONFIG_ID) == item->identifier) {
         gDrcPictureMode = newValue;
         WUPSStorageAPI::Store(item->identifier, gDrcPictureMode);
+    } else if (std::string_view(DRC_BRIGHTNESS_MODE_CONFIG_ID) == item->identifier) {
+        gDrcBrightnessMode = newValue;
+        WUPSStorageAPI::Store(item->identifier, gDrcBrightnessMode);
     }
 }
 
@@ -78,6 +81,9 @@ void languageChangedCallback(ConfigItemMultipleValues *item, uint32_t newValue)
 WUPSConfigAPICallbackStatus ConfigMenuOpenedCallback(WUPSConfigCategoryHandle rootHandle)
 {
     const TranslatedStrings strings = getTranslatedStrings();
+
+    // safety net: opening this menu (shown on the TV) always brings the GamePad brightness back
+    restoreDrcBrightnessIfNeeded();
 
     try {
         WUPSConfigCategory root = WUPSConfigCategory(rootHandle);
@@ -222,6 +228,18 @@ WUPSConfigAPICallbackStatus ConfigMenuOpenedCallback(WUPSConfigCategoryHandle ro
                                                                          drcPictureValues,
                                                                          &multipleValueItemCallback));
 
+        constexpr WUPSConfigItemMultipleValues::ValuePair drcBrightnessValues[] = {
+                {DRC_BRIGHTNESS_UNCHANGED, "Unchanged (default)"},
+                {DRC_BRIGHTNESS_ZERO,      "Level 0 / off (experimental)"},
+                {DRC_BRIGHTNESS_ONE,       "Level 1 (dimmest)"}};
+
+        lcdOffSettings.add(WUPSConfigItemMultipleValues::CreateFromValue(DRC_BRIGHTNESS_MODE_CONFIG_ID,
+                                                                         "GamePad brightness at launch",
+                                                                         DEFAULT_DRC_BRIGHTNESS_MODE_VALUE,
+                                                                         gDrcBrightnessMode,
+                                                                         drcBrightnessValues,
+                                                                         &multipleValueItemCallback));
+
         root.add(std::move(lcdOffSettings));
 
         // Category: Other settings
@@ -361,6 +379,12 @@ void initConfig()
     WUPSStorageAPI::GetOrStoreDefault<int32_t>(DRC_PICTURE_MODE_CONFIG_ID, gDrcPictureMode, DEFAULT_DRC_PICTURE_MODE_VALUE);
     if (gDrcPictureMode < DRC_PICTURE_MIRROR || gDrcPictureMode >= DRC_PICTURE_COUNT) {
         gDrcPictureMode = DEFAULT_DRC_PICTURE_MODE_VALUE;
+    }
+
+    // Load and validate gDrcBrightnessMode
+    WUPSStorageAPI::GetOrStoreDefault<int32_t>(DRC_BRIGHTNESS_MODE_CONFIG_ID, gDrcBrightnessMode, DEFAULT_DRC_BRIGHTNESS_MODE_VALUE);
+    if (gDrcBrightnessMode < DRC_BRIGHTNESS_UNCHANGED || gDrcBrightnessMode >= DRC_BRIGHTNESS_COUNT) {
+        gDrcBrightnessMode = DEFAULT_DRC_BRIGHTNESS_MODE_VALUE;
     }
 
     // Load and validate gNotificationTheme
