@@ -88,6 +88,8 @@ extern int32_t gDrcBrightnessMode;
 
 // restores the GamePad brightness saved before a Wii VC launch (safe to call any time)
 void restoreDrcBrightnessIfNeeded();
+// applies a brightness mode immediately (plugin menu preview)
+void previewDrcBrightness(int32_t mode);
 
 // Other
 extern int32_t gNotificationTheme;

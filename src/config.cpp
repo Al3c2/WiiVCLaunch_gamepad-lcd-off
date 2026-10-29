@@ -68,6 +68,7 @@ void multipleValueItemCallback(ConfigItemMultipleValues *item, uint32_t newValue
     } else if (std::string_view(DRC_BRIGHTNESS_MODE_CONFIG_ID) == item->identifier) {
         gDrcBrightnessMode = newValue;
         WUPSStorageAPI::Store(item->identifier, gDrcBrightnessMode);
+        previewDrcBrightness(gDrcBrightnessMode);
     }
 }
 
@@ -298,6 +299,9 @@ WUPSConfigAPICallbackStatus ConfigMenuOpenedCallback(WUPSConfigCategoryHandle ro
 
 void ConfigMenuClosedCallback()
 {
+    // end of the live preview: put the normal brightness back
+    restoreDrcBrightnessIfNeeded();
+
     // Save all changes
     WUPSStorageAPI::SaveStorage();
 }
