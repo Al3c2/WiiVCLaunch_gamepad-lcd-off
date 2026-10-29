@@ -20,6 +20,8 @@
 #include <proc_ui/procui.h>
 #include <vpad/input.h>
 #include <nn/ccr/sys.h>
+#include <nsysccr/cdc.h>
+#include <cstring>
 
 #include <wups.h>
 
@@ -52,17 +54,27 @@ static bool sLaunchingWiiGame = false;
 static bool sInputRedirectionActive = false;
 static bool sUserCancelledCustomDialogs = false;
 
-// Brightness fork: the GamePad keeps its brightness level into Wii mode,
-// so we set it right before launch and put the user's level back afterwards.
-static int32_t getDrcBrightness(CCRSysLCDMode *out)
+// Brightness fork.
+// The GamePad brightness lives in two places:
+//  - the live level (CCRSysSet/GetCurrentLCDMode): only lasts while in Wii U mode
+//  - the saved level in the GamePad's own EEPROM, UIC config "LCD_MODE"
+//    (offset 0x286, 3 bytes: level + CRC16). Wii mode applies this one, so this is what we change before launch.
+#define LCD_MODE_EEPROM_OFFSET 0x286
+
+enum CrcOrder { CRC_ORDER_UNKNOWN, CRC_ORDER_BIG, CRC_ORDER_LITTLE };
+static CrcOrder sCrcOrder = CRC_ORDER_UNKNOWN;
+static CCRCDCEepromData sEeprom __attribute__((aligned(0x40)));
+static CCRCDCUicConfig sUicConfig __attribute__((aligned(0x40)));
+
+static void notifyBrightness(const char *text, bool ok)
 {
-    CCRSysInit();
-    int32_t res = CCRSysGetCurrentLCDMode(out);
-    CCRSysExit();
-    return res;
+    if (ok)
+        NotificationModule_AddInfoNotification(text);
+    else
+        NotificationModule_AddErrorNotification(text);
 }
 
-static int32_t setDrcBrightness(int32_t level)
+static int32_t setLiveDrcBrightness(int32_t level)
 {
     CCRSysInit();
     int32_t res = CCRSysSetCurrentLCDMode((CCRSysLCDMode) level);
@@ -70,62 +82,85 @@ static int32_t setDrcBrightness(int32_t level)
     return res;
 }
 
-static void notifyBrightness(const char *where, int32_t level, int32_t res)
+// Reads the saved LCD_MODE entry and works out its CRC byte order.
+// Returns 0 on success. Never trusts the entry unless its CRC checks out.
+static int32_t readSavedDrcBrightness(int32_t *outLevel, char *dump, size_t dumpSize)
 {
-    char text[80];
-    snprintf(text, sizeof(text), "GamePad brightness %ld (%s): result %ld", (long) level, where, (long) res);
-    if (res == 0)
-        NotificationModule_AddInfoNotification(text);
+    int32_t res = CCRCDCPerGetUicEeprom(CCR_CDC_DESTINATION_DRC0, &sEeprom);
+    if (res != 0) {
+        snprintf(dump, dumpSize, "read error %ld", (long) res);
+        return res;
+    }
+    uint8_t *e   = &sEeprom.data[LCD_MODE_EEPROM_OFFSET];
+    uint16_t crc = CCRCDCCalcCRC16(e, 1);
+    snprintf(dump, dumpSize, "%02X %02X %02X crc %04X", e[0], e[1], e[2], crc);
+    if (e[1] == (crc >> 8) && e[2] == (crc & 0xFF))
+        sCrcOrder = CRC_ORDER_BIG;
+    else if (e[2] == (crc >> 8) && e[1] == (crc & 0xFF))
+        sCrcOrder = CRC_ORDER_LITTLE;
     else
-        NotificationModule_AddErrorNotification(text);
+        return -200; // unknown format: never write
+    *outLevel = e[0];
+    return 0;
 }
 
-static void rememberDrcBrightness()
+// Writes the saved LCD_MODE entry, then reads it back to check.
+static int32_t writeSavedDrcBrightness(int32_t level)
 {
-    CCRSysLCDMode current = CCR_SYS_LCD_MODE_BRIGHTNESS_3;
-    int32_t res = getDrcBrightness(&current);
-    if (res != 0 || current < CCR_SYS_LCD_MODE_BRIGHTNESS_1 || current > CCR_SYS_LCD_MODE_BRIGHTNESS_5) {
-        DEBUG_FUNCTION_LINE_ERR("Brightness: get failed (%d) or odd level %d, using 3", res, current);
-        current = CCR_SYS_LCD_MODE_BRIGHTNESS_3;
+    if (sCrcOrder == CRC_ORDER_UNKNOWN)
+        return -201;
+    memset(&sUicConfig, 0, sizeof(sUicConfig));
+    sUicConfig.configId = CCR_CDC_UIC_CONFIG_ID_LCD_MODE;
+    sUicConfig.size     = 3;
+    sUicConfig.data[0]  = (uint8_t) level;
+    uint16_t crc        = CCRCDCCalcCRC16(sUicConfig.data, 1);
+    if (sCrcOrder == CRC_ORDER_BIG) {
+        sUicConfig.data[1] = crc >> 8;
+        sUicConfig.data[2] = crc & 0xFF;
+    } else {
+        sUicConfig.data[1] = crc & 0xFF;
+        sUicConfig.data[2] = crc >> 8;
     }
+    int32_t res = CCRCDCPerSetUicConfig(CCR_CDC_DESTINATION_DRC0, &sUicConfig);
+    if (res != 0)
+        return res;
+
+    int32_t check = -1;
+    char dump[48];
+    if (readSavedDrcBrightness(&check, dump, sizeof(dump)) != 0 || check != level)
+        return -202; // write did not stick
+    return 0;
+}
+
+// Saves the user's level (once), then writes the launch level into the GamePad.
+static void applySavedDrcBrightness(int32_t mode, const char *where)
+{
+    char text[110];
+    char dump[48];
+    int32_t current = 0;
+    int32_t res     = readSavedDrcBrightness(&current, dump, sizeof(dump));
+    if (res != 0) {
+        snprintf(text, sizeof(text), "Brightness (%s): can't read GamePad setting, not changed (%ld, %s)", where, (long) res, dump);
+        notifyBrightness(text, false);
+        return;
+    }
+
     bool pending = false;
     WUPSStorageAPI::Get(DRC_BRIGHTNESS_RESTORE_PENDING_ID, pending);
     if (!pending) { // don't overwrite the real level with our own 0/1 if a restore is still due
-        WUPSStorageAPI::Store(DRC_BRIGHTNESS_SAVED_ID, (int32_t) current);
+        if (current < CCR_SYS_LCD_MODE_BRIGHTNESS_1 || current > CCR_SYS_LCD_MODE_BRIGHTNESS_5)
+            current = CCR_SYS_LCD_MODE_BRIGHTNESS_3;
+        WUPSStorageAPI::Store(DRC_BRIGHTNESS_SAVED_ID, current);
     }
     WUPSStorageAPI::Store(DRC_BRIGHTNESS_RESTORE_PENDING_ID, true);
     WUPSStorageAPI::SaveStorage();
-    DEBUG_FUNCTION_LINE("Brightness: saved level %d", current);
-}
 
-static void applyDrcBrightnessIfWanted()
-{
-    if (!gDrcUsedAsController || gDrcBrightnessMode == DRC_BRIGHTNESS_UNCHANGED)
-        return;
-    int32_t level = (gDrcBrightnessMode == DRC_BRIGHTNESS_ZERO) ? 0 : 1;
-    int32_t res = setDrcBrightness(level);
-    DEBUG_FUNCTION_LINE("Brightness: CCRSysSetCurrentLCDMode(%d) = %d", level, res);
-}
-
-// called from the Wii U Menu right after "Use GamePad as controller" is chosen
-static void applyDrcBrightnessInMenu()
-{
-    if (gDrcBrightnessMode == DRC_BRIGHTNESS_UNCHANGED)
-        return;
-    int32_t level = (gDrcBrightnessMode == DRC_BRIGHTNESS_ZERO) ? 0 : 1;
-    notifyBrightness("launch", level, setDrcBrightness(level));
-}
-
-// plugin menu: apply the chosen level straight away so its effect can be seen
-void previewDrcBrightness(int32_t mode)
-{
-    if (mode == DRC_BRIGHTNESS_UNCHANGED) {
-        restoreDrcBrightnessIfNeeded();
-        return;
-    }
-    rememberDrcBrightness();
     int32_t level = (mode == DRC_BRIGHTNESS_ZERO) ? 0 : 1;
-    notifyBrightness("preview", level, setDrcBrightness(level));
+    res           = writeSavedDrcBrightness(level);
+    if (level >= 1)
+        setLiveDrcBrightness(level);
+    snprintf(text, sizeof(text), "Brightness %ld (%s): result %ld (was %s)", (long) level, where, (long) res, dump);
+    notifyBrightness(text, res == 0);
 }
 
 void restoreDrcBrightnessIfNeeded()
@@ -137,12 +172,39 @@ void restoreDrcBrightnessIfNeeded()
     WUPSStorageAPI::Get(DRC_BRIGHTNESS_SAVED_ID, saved);
     if (saved < CCR_SYS_LCD_MODE_BRIGHTNESS_1 || saved > CCR_SYS_LCD_MODE_BRIGHTNESS_5)
         saved = CCR_SYS_LCD_MODE_BRIGHTNESS_3;
-    int32_t res = setDrcBrightness(saved);
+
+    int32_t dummy = 0;
+    char dump[48];
+    readSavedDrcBrightness(&dummy, dump, sizeof(dump)); // learns the CRC order
+    int32_t res = writeSavedDrcBrightness(saved);
+    setLiveDrcBrightness(saved);
     DEBUG_FUNCTION_LINE("Brightness: restored level %d (res %d)", saved, res);
     if (res == 0) {
         WUPSStorageAPI::Store(DRC_BRIGHTNESS_RESTORE_PENDING_ID, false);
         WUPSStorageAPI::SaveStorage();
+    } else {
+        char text[80];
+        snprintf(text, sizeof(text), "Brightness: restore to %ld failed (%ld)", (long) saved, (long) res);
+        notifyBrightness(text, false);
     }
+}
+
+// called from the Wii U Menu right after "Use GamePad as controller" is chosen
+static void applyDrcBrightnessInMenu()
+{
+    if (gDrcBrightnessMode == DRC_BRIGHTNESS_UNCHANGED)
+        return;
+    applySavedDrcBrightness(gDrcBrightnessMode, "launch");
+}
+
+// plugin menu: apply the chosen level straight away so its effect can be seen
+void previewDrcBrightness(int32_t mode)
+{
+    if (mode == DRC_BRIGHTNESS_UNCHANGED) {
+        restoreDrcBrightnessIfNeeded();
+        return;
+    }
+    applySavedDrcBrightness(mode, "preview");
 }
 
 // LCD-off fork: turn the GamePad screen off while keeping it as the controller.
@@ -655,7 +717,6 @@ DECL_FUNCTION(int32_t, MCP_LaunchCompat, int32_t handle, void *confBuffer, uint3
     if (gPermanentNetConfig)
         patchNetConfigOverwrite();
     turnDrcLcdOffIfWanted(false);
-    applyDrcBrightnessIfWanted();
     return real_MCP_LaunchCompat(handle, confBuffer, confBufferSize, imgsBuffer, imgsBufferSize);
 }
 
@@ -663,10 +724,8 @@ DECL_FUNCTION(int32_t, CMPTAcctSetDrcCtrlEnabled, int32_t enable)
 {
     // remember the choice; the launch itself happens later in another process
     gDrcUsedAsController = (enable != 0);
-    if (enable != 0 && gDrcBrightnessMode != DRC_BRIGHTNESS_UNCHANGED) {
-        rememberDrcBrightness();
+    if (enable != 0 && gDrcBrightnessMode != DRC_BRIGHTNESS_UNCHANGED)
         applyDrcBrightnessInMenu();
-    }
     if (enable == 0 && !sLaunchingWiiGame) {
         int8_t sensorBarEnabled = 0;
         VPADBASEGetSensorBarSetting(VPAD_CHAN_0, &sensorBarEnabled);
