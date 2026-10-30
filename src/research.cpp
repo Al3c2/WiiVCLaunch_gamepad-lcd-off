@@ -124,15 +124,10 @@ struct IosuRegion {
     uint32_t size;
 };
 
-// Second pass. IOS-MCP .text 0x05000000-0x05058000 was dumped already; the first pass stopped at 0x05058000.
-// Section bases from MochaPayload (mcp_rodata_phys / mcp_data_phys / bsp_data_phys macros).
+// Third pass: IOS-PAD only (GamePad driver). Pass 2 got MCP rodata/data; reading BSP at 0xE6042000 stopped the console.
 static const IosuRegion sIosuRegions[] = {
-        {"IOS-MCP-rodata", 0x05060000, 0x00014000}, // strings, tables
-        {"IOS-MCP-data", 0x05074000, 0x00049000},   // .data/.bss up to Mocha's own bss at 0x050BD000
-        {"IOS-BSP-data", 0xE6042000, 0x0000E000},
-        {"IOS-BSP-text", 0xE6000000, 0x00042000},
-        {"IOS-PAD", 0x11F00000, 0x00260000},        // GamePad: /dev/ccr_cdc, ccr_hid, DRH
-        {"IOS-MCP-text-tail", 0x05058000, 0x00008000}, // the address where pass 1 stopped -- last on purpose
+        {"IOS-PAD", 0x11F00000, 0x00260000},           // GamePad: /dev/ccr_io, ccr_cdc, ccr_hid, DRH
+        {"IOS-MCP-text-tail", 0x05058000, 0x00008000}, // where pass 1 stopped -- last on purpose
 };
 
 #define IOSU_DUMP_DIR "fs:/vol/external01/wiiu/iosu-dump"

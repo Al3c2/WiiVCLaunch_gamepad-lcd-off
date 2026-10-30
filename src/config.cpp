@@ -293,7 +293,7 @@ WUPSConfigAPICallbackStatus ConfigMenuOpenedCallback(WUPSConfigCategoryHandle ro
                                                            &boolItemCallback));
 
         researchSettings.add(WUPSConfigItemBoolean::Create("researchIosuDump",
-                                                           "Dump IOSU part 2 to SD (read-only)",
+                                                           "Dump IOSU part 3 (GamePad driver) to SD",
                                                            false,
                                                            false,
                                                            &boolItemCallback));
