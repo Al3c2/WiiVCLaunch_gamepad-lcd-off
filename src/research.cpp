@@ -124,10 +124,12 @@ struct IosuRegion {
     uint32_t size;
 };
 
-// Third pass: IOS-PAD only (GamePad driver). Pass 2 got MCP rodata/data; reading BSP at 0xE6042000 stopped the console.
+// Fourth pass: IOS-PAD rodata + data. Pass 3 got PAD .text 0x11F00000-0x11F88000 (then stopped).
+// Addresses from pointer clustering in PAD .text: ~2200 refs into 0x11FC0000-0x11FD7000 (strings),
+// next cluster 0x11FF5000-0x11FFB000 (data).
 static const IosuRegion sIosuRegions[] = {
-        {"IOS-PAD", 0x11F00000, 0x00260000},           // GamePad: /dev/ccr_io, ccr_cdc, ccr_hid, DRH
-        {"IOS-MCP-text-tail", 0x05058000, 0x00008000}, // where pass 1 stopped -- last on purpose
+        {"IOS-PAD-rodata", 0x11FC0000, 0x00018000},
+        {"IOS-PAD-data", 0x11FE0000, 0x0001C000},
 };
 
 #define IOSU_DUMP_DIR "fs:/vol/external01/wiiu/iosu-dump"
@@ -196,7 +198,7 @@ static void iosuDumpThread()
                 chunk[i] = v; // PowerPC is big-endian, like the ARM IOSU here: bytes are written as-is
             }
             fwrite(chunk, 1, chunkSize, f);
-            if (((off + chunkSize) & 0xFFFF) == 0 || off + chunkSize >= r.size) {
+            { // flush every 4 KB so a stop loses almost nothing
                 fflush(f); // keep what we have if the console stops
                 if (info) {
                     fprintf(info, "progress %s up to 0x%08lX\n", r.name, (unsigned long) (r.start + off + chunkSize));
