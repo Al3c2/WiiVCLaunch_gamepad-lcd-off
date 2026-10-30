@@ -5,6 +5,7 @@
 #include <notifications/notifications.h>
 #include <nsysccr/cdc.h>
 #include <vpadbase/base.h>
+#include <vpad/input.h>
 
 #include <cstdio>
 #include <cstring>
@@ -79,6 +80,8 @@ void researchSetCtrlModeNow(int32_t mode)
 {
     researchSnapshot(mode ? "before-off" : "before-on");
     VPADBASESetGameControllerMode(VPAD_CHAN_0, mode);
+    if (mode == 0) // controller mode 0 alone doesn't bring the display back; switch the LCD on explicitly
+        VPADSetLcdMode(VPAD_CHAN_0, VPAD_LCD_ON);
     researchSnapshot(mode ? "after-off" : "after-on");
 }
 
