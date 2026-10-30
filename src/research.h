@@ -32,3 +32,6 @@ void researchSetCtrlModeNow(int32_t mode);
 // Read-only snapshot (controller mode, GamePad state, brightness and LCD parameters via generic commands)
 // appended to SD:/wiiu/lcdoff-research.log, with a short notification
 void researchSnapshot(const char *tag);
+
+// Read-only IOSU dump to SD:/wiiu/iosu-dump/ (IOS-MCP, IOS-PAD, IOS-BSP), runs in a background thread
+void researchStartIosuDump();

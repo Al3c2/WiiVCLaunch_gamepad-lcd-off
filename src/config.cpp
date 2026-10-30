@@ -26,6 +26,11 @@ void boolItemCallback(ConfigItemBoolean *item, bool newValue)
         WUPSStorageAPI::Store(item->identifier, gResearchLog);
         return;
     }
+    if (std::string_view("researchIosuDump") == item->identifier) {
+        if (newValue)
+            researchStartIosuDump();
+        return;
+    }
     if (std::string_view("researchDisplayOffNow") == item->identifier) {
         researchSetCtrlModeNow(newValue ? 1 : 0);
         return;
@@ -285,6 +290,12 @@ WUPSConfigAPICallbackStatus ConfigMenuOpenedCallback(WUPSConfigCategoryHandle ro
                                                            "Log diagnostics to SD",
                                                            false,
                                                            gResearchLog,
+                                                           &boolItemCallback));
+
+        researchSettings.add(WUPSConfigItemBoolean::Create("researchIosuDump",
+                                                           "Dump IOSU to SD (read-only, ~1-2 min)",
+                                                           false,
+                                                           false,
                                                            &boolItemCallback));
 
         root.add(std::move(researchSettings));
