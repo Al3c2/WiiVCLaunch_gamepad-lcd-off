@@ -21,6 +21,8 @@
 #include <vpad/input.h>
 #include <nn/ccr/sys.h>
 #include <nsysccr/cdc.h>
+#include <wups/button_combo/api.h>
+#include <optional>
 #include <cstring>
 
 #include <wups.h>
@@ -189,6 +191,48 @@ void restoreDrcBrightnessIfNeeded()
     }
 }
 
+// Emergency restore: hold ZL + ZR + L + R + Y for 2 seconds on any controller (Wii U mode only).
+// Works even if the GamePad screen is dark and no menu can be seen.
+static std::optional<WUPSButtonComboAPI::ButtonCombo> sEmergencyCombo;
+
+static void emergencyRestoreCallback(WUPSButtonCombo_ControllerTypes, WUPSButtonCombo_ComboHandle, void *)
+{
+    int32_t level = CCR_SYS_LCD_MODE_BRIGHTNESS_3;
+    WUPSStorageAPI::Get(DRC_BRIGHTNESS_SAVED_ID, level);
+    if (level < CCR_SYS_LCD_MODE_BRIGHTNESS_1 || level > CCR_SYS_LCD_MODE_BRIGHTNESS_5)
+        level = CCR_SYS_LCD_MODE_BRIGHTNESS_3;
+
+    int32_t dummy = 0;
+    char dump[48];
+    readSavedDrcBrightness(&dummy, dump, sizeof(dump)); // learns the CRC order
+    int32_t res = writeSavedDrcBrightness(level);
+    setLiveDrcBrightness(level);
+    if (res == 0) {
+        WUPSStorageAPI::Store(DRC_BRIGHTNESS_RESTORE_PENDING_ID, false);
+        WUPSStorageAPI::SaveStorage();
+    }
+    char text[90];
+    snprintf(text, sizeof(text), "Emergency: GamePad brightness set to %ld (result %ld, was %s)", (long) level, (long) res, dump);
+    notifyBrightness(text, res == 0);
+}
+
+static void registerEmergencyCombo()
+{
+    WUPSButtonCombo_ComboStatus status = WUPS_BUTTON_COMBO_COMBO_STATUS_INVALID_STATUS;
+    WUPSButtonCombo_Error err          = WUPS_BUTTON_COMBO_ERROR_UNKNOWN_ERROR;
+    sEmergencyCombo = WUPSButtonComboAPI::CreateComboHoldObserver("Wii VC Launch: restore GamePad brightness",
+                                                                  (WUPSButtonCombo_Buttons) (WUPS_BUTTON_COMBO_BUTTON_ZL | WUPS_BUTTON_COMBO_BUTTON_ZR |
+                                                                                             WUPS_BUTTON_COMBO_BUTTON_L | WUPS_BUTTON_COMBO_BUTTON_R |
+                                                                                             WUPS_BUTTON_COMBO_BUTTON_Y),
+                                                                  2000,
+                                                                  emergencyRestoreCallback,
+                                                                  nullptr,
+                                                                  status,
+                                                                  err);
+    if (!sEmergencyCombo || err != WUPS_BUTTON_COMBO_ERROR_SUCCESS)
+        NotificationModule_AddErrorNotification("Wii VC Launch: could not register brightness emergency combo");
+}
+
 // called from the Wii U Menu right after "Use GamePad as controller" is chosen
 static void applyDrcBrightnessInMenu()
 {
@@ -234,10 +278,12 @@ INITIALIZE_PLUGIN()
     initNotifications();
     restoreSysconfIfNeeded();
     FunctionPatcher_InitLibrary();
+    registerEmergencyCombo();
 }
 
 DEINITIALIZE_PLUGIN()
 {
+    sEmergencyCombo.reset();
     NotificationModule_DeInitLibrary();
     FunctionPatcher_DeInitLibrary();
 }
