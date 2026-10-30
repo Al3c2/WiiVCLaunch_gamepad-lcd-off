@@ -6,6 +6,7 @@
 #include "logger.h"
 #include "mocha.h"
 #include "notifications.h"
+#include "research.h"
 #include "sysconf_preserver.h"
 
 #include <avm/tv.h>
@@ -732,6 +733,8 @@ static void patchNetConfigOverwrite()
 
 DECL_FUNCTION(int32_t, CMPTExPrepareLaunch, uint32_t unk1, void *unk2, uint32_t unk3)
 {
+    if (gDrcUsedAsController)
+        researchAtPoint(RESEARCH_POINT_PREPARE);
     setResolution(gSetResolution);
     if (gPermanentNetConfig)
         patchNetConfigOverwrite();
@@ -763,6 +766,8 @@ DECL_FUNCTION(int32_t, MCP_LaunchCompat, int32_t handle, void *confBuffer, uint3
     if (gPermanentNetConfig)
         patchNetConfigOverwrite();
     turnDrcLcdOffIfWanted(false);
+    if (gDrcUsedAsController)
+        researchAtPoint(RESEARCH_POINT_LAUNCH);
     return real_MCP_LaunchCompat(handle, confBuffer, confBufferSize, imgsBuffer, imgsBufferSize);
 }
 
@@ -772,6 +777,8 @@ DECL_FUNCTION(int32_t, CMPTAcctSetDrcCtrlEnabled, int32_t enable)
     gDrcUsedAsController = (enable != 0);
     if (enable != 0 && gDrcBrightnessMode != DRC_BRIGHTNESS_UNCHANGED)
         applyDrcBrightnessInMenu();
+    if (enable != 0)
+        researchAtPoint(RESEARCH_POINT_CHOICE);
     if (enable == 0 && !sLaunchingWiiGame) {
         int8_t sensorBarEnabled = 0;
         VPADBASEGetSensorBarSetting(VPAD_CHAN_0, &sensorBarEnabled);

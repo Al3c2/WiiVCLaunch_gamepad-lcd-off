@@ -3,6 +3,7 @@
 #include "lang.h"
 #include "logger.h"
 #include "notifications.h"
+#include "research.h"
 
 #include <wups.h>
 #include <wups/config/WUPSConfigItemBoolean.h>
@@ -20,6 +21,15 @@ void boolItemCallback(ConfigItemBoolean *item, bool newValue)
     if (!item || !item->identifier) {
         return;
     }
+    if (std::string_view("researchLog") == item->identifier) {
+        gResearchLog = newValue;
+        WUPSStorageAPI::Store(item->identifier, gResearchLog);
+        return;
+    }
+    if (std::string_view("researchDisplayOffNow") == item->identifier) {
+        researchSetCtrlModeNow(newValue ? 1 : 0);
+        return;
+    }
     if (std::string_view(USE_CUSTOM_DIALOGS_CONFIG_ID) == item->identifier) {
         gUseCustomDialogs = newValue;
         WUPSStorageAPI::Store(item->identifier, gUseCustomDialogs);
@@ -35,6 +45,11 @@ void boolItemCallback(ConfigItemBoolean *item, bool newValue)
 void multipleValueItemCallback(ConfigItemMultipleValues *item, uint32_t newValue)
 {
     if (!item || !item->identifier) {
+        return;
+    }
+    if (std::string_view("researchCtrlModePoint") == item->identifier) {
+        gResearchCtrlModePoint = newValue;
+        WUPSStorageAPI::Store(item->identifier, gResearchCtrlModePoint);
         return;
     }
     if (std::string_view(AUTOLAUNCH_DRC_SUPPORTED_CONFIG_ID) == item->identifier) {
@@ -243,6 +258,37 @@ WUPSConfigAPICallbackStatus ConfigMenuOpenedCallback(WUPSConfigCategoryHandle ro
 
         root.add(std::move(lcdOffSettings));
 
+        // Category: LCD-off research (experiments, not translated)
+        auto researchSettings = WUPSConfigCategory::Create("LCD-off research");
+
+        constexpr WUPSConfigItemMultipleValues::ValuePair ctrlModeValues[] = {
+                {RESEARCH_CTRL_MODE_OFF,        "Off"},
+                {RESEARCH_CTRL_MODE_AT_CHOICE,  "At choice (Wii U Menu)"},
+                {RESEARCH_CTRL_MODE_AT_PREPARE, "At prepare launch"},
+                {RESEARCH_CTRL_MODE_AT_LAUNCH,  "Right before launch"},
+                {RESEARCH_CTRL_MODE_ALL,        "All three"}};
+
+        researchSettings.add(WUPSConfigItemMultipleValues::CreateFromValue("researchCtrlModePoint",
+                                                                           "R1: controller mode (display off) at",
+                                                                           RESEARCH_CTRL_MODE_OFF,
+                                                                           gResearchCtrlModePoint,
+                                                                           ctrlModeValues,
+                                                                           &multipleValueItemCallback));
+
+        researchSettings.add(WUPSConfigItemBoolean::Create("researchDisplayOffNow",
+                                                           "R1 live test: controller mode now",
+                                                           false,
+                                                           false,
+                                                           &boolItemCallback));
+
+        researchSettings.add(WUPSConfigItemBoolean::Create("researchLog",
+                                                           "Log diagnostics to SD",
+                                                           false,
+                                                           gResearchLog,
+                                                           &boolItemCallback));
+
+        root.add(std::move(researchSettings));
+
         // Category: Other settings
         auto otherSettings = WUPSConfigCategory::Create(strings.other_settings);
 
@@ -390,6 +436,12 @@ void initConfig()
     if (gDrcBrightnessMode < DRC_BRIGHTNESS_UNCHANGED || gDrcBrightnessMode >= DRC_BRIGHTNESS_COUNT) {
         gDrcBrightnessMode = DEFAULT_DRC_BRIGHTNESS_MODE_VALUE;
     }
+
+    // Research settings
+    WUPSStorageAPI::GetOrStoreDefault<int32_t>("researchCtrlModePoint", gResearchCtrlModePoint, RESEARCH_CTRL_MODE_OFF);
+    if (gResearchCtrlModePoint < RESEARCH_CTRL_MODE_OFF || gResearchCtrlModePoint >= RESEARCH_CTRL_MODE_COUNT)
+        gResearchCtrlModePoint = RESEARCH_CTRL_MODE_OFF;
+    WUPSStorageAPI::GetOrStoreDefault("researchLog", gResearchLog, false);
 
     // Load and validate gNotificationTheme
     WUPSStorageAPI::GetOrStoreDefault<int32_t>(NOTIFICATION_THEME_CONFIG_ID, gNotificationTheme, DEFAULT_NOTIFICATION_THEME_VALUE);

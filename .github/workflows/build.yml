@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - 'gamepad-lcd-off'
+      - 'research/**'
   pull_request:
     branches:
       - 'main'
