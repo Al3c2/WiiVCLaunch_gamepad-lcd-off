@@ -124,10 +124,15 @@ struct IosuRegion {
     uint32_t size;
 };
 
+// Second pass. IOS-MCP .text 0x05000000-0x05058000 was dumped already; the first pass stopped at 0x05058000.
+// Section bases from MochaPayload (mcp_rodata_phys / mcp_data_phys / bsp_data_phys macros).
 static const IosuRegion sIosuRegions[] = {
-        {"IOS-MCP", 0x05000000, 0x000C0000}, // title launch, cafe2wii (vWii launch)
-        {"IOS-PAD", 0x11F00000, 0x00260000}, // GamePad: /dev/ccr_cdc, ccr_hid, DRH
-        {"IOS-BSP", 0xE6000000, 0x00050000}, // board support (hardware interface)
+        {"IOS-MCP-rodata", 0x05060000, 0x00014000}, // strings, tables
+        {"IOS-MCP-data", 0x05074000, 0x00049000},   // .data/.bss up to Mocha's own bss at 0x050BD000
+        {"IOS-BSP-data", 0xE6042000, 0x0000E000},
+        {"IOS-BSP-text", 0xE6000000, 0x00042000},
+        {"IOS-PAD", 0x11F00000, 0x00260000},        // GamePad: /dev/ccr_cdc, ccr_hid, DRH
+        {"IOS-MCP-text-tail", 0x05058000, 0x00008000}, // the address where pass 1 stopped -- last on purpose
 };
 
 #define IOSU_DUMP_DIR "fs:/vol/external01/wiiu/iosu-dump"
@@ -153,7 +158,7 @@ static void iosuDumpThread()
     mkdir("fs:/vol/external01/wiiu", 0777);
     mkdir(IOSU_DUMP_DIR, 0777);
 
-    FILE *info = fopen(IOSU_DUMP_DIR "/info.txt", "w");
+    FILE *info = fopen(IOSU_DUMP_DIR "/info.txt", "a");
     if (info) {
         int32_t mcp                       = MCP_Open();
         MCPSystemVersion ver __attribute__((aligned(0x40))) = {};
@@ -162,6 +167,7 @@ static void iosuDumpThread()
         if (mcp >= 0)
             MCP_Close(mcp);
         fprintf(info, "Read with Mocha_IOSUKernelRead32, virtual addresses.\nUnreadable words are filled with 0xDEADBEEF and counted below.\n");
+        fflush(info);
     }
 
     const uint32_t chunkSize = 0x1000;
@@ -195,10 +201,20 @@ static void iosuDumpThread()
                 chunk[i] = v; // PowerPC is big-endian, like the ARM IOSU here: bytes are written as-is
             }
             fwrite(chunk, 1, chunkSize, f);
+            if (((off + chunkSize) & 0xFFFF) == 0 || off + chunkSize >= r.size) {
+                fflush(f); // keep what we have if the console stops
+                if (info) {
+                    fprintf(info, "progress %s up to 0x%08lX\n", r.name, (unsigned long) (r.start + off + chunkSize));
+                    fflush(info);
+                }
+            }
         }
         fclose(f);
         if (info)
+        {
             fprintf(info, "%s 0x%08lX size 0x%08lX failed words %lu\n", r.name, (unsigned long) r.start, (unsigned long) r.size, (unsigned long) failed);
+            fflush(info);
+        }
         if (failed)
             allOk = false;
     }

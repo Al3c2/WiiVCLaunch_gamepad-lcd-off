@@ -293,7 +293,7 @@ WUPSConfigAPICallbackStatus ConfigMenuOpenedCallback(WUPSConfigCategoryHandle ro
                                                            &boolItemCallback));
 
         researchSettings.add(WUPSConfigItemBoolean::Create("researchIosuDump",
-                                                           "Dump IOSU to SD (read-only, ~1-2 min)",
+                                                           "Dump IOSU part 2 to SD (read-only)",
                                                            false,
                                                            false,
                                                            &boolItemCallback));
